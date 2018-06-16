@@ -6,11 +6,17 @@ from urllib.parse import urlparse, urljoin
 
 
 class page_base_c:
+    '''
+    a base page class that can: 
+        open a page and wait until it is loaded
+        throw an exception if a wrong page loaded or loading timed out, used in tests
+        help diagnose loading errors 
+    '''
     _base_url = None
     _driver = None
     _url = None
 
-    def __init__(self, driver, base_url='https://e.mail.ru/', timeout=10, wait_until_ready=True) -> None:
+    def __init__(self, driver, base_url='https://e.mail.ru/', timeout=15, wait_until_ready=True) -> None:
         self._driver = driver
         self._base_url = base_url
         self._timeout = timeout
@@ -25,15 +31,12 @@ class page_base_c:
     def url(self):
         return urljoin(self._base_url, self._url)
 
-    def open(self):
-        self._driver.get(self.url)
-        return self
-
     @property
     def driver(self):
         return self._driver
 
     def wait_until_ready(self):
+        '''called from init; awaits page readiness; if timed out, reports reasons'''
         try:
             WebDriverWait(self._driver, self._timeout).until(lambda _: self.ready(),
                                                              "wait failed after %s seconds" % self._timeout)
@@ -41,8 +44,10 @@ class page_base_c:
             self.ready(diag=True)
             raise
 
+
     @staticmethod
     def url_paths_equal(url1, url2):
+        '''compare url paths, part of the check that we landed at the right page'''
         p1 = urlparse(url1)
         p2 = urlparse(url2)
         return p1[:3] == p2[:3]
@@ -50,7 +55,10 @@ class page_base_c:
     def report(self, msg):
         print(msg)
 
+
+    
     def ready(self, diag=False):
+        '''check if the page is what we expect and ready'''
         if not self.url_paths_equal(self._driver.current_url, self.url):
             if diag:
                 self.report("current url <> expected url: %s, %s" % (self._driver.current_url, self.url))
@@ -71,6 +79,8 @@ class page_base_c:
 
 
 class login_page_c(page_base_c):
+    ''' login page '''
+
     _url = '/'
 
     def __init__(self, driver, base_url='https://mail.ru/', **kwargs) -> None:
@@ -86,7 +96,9 @@ class login_page_c(page_base_c):
     def click_login(self):
         self.find_element(*locators_c.main_login.SUBMIT).click()
 
+    
     def login(self, user, logout=True):
+        ''' login service '''
         if logout:
             logout_link = self.find_element(*locators_c.main_logged_in.LOGOUT)
             if logout_link.is_displayed():
@@ -106,32 +118,27 @@ class login_page_c(page_base_c):
 
 
 class main_page_logged_in_c(page_base_c):
+    ''' main page, logged in '''
     _url = '/messages/inbox/'
 
     def __init__(self, driver, **kwargs) -> None:
         self.locator = locators_c.main_logged_in.LOGOUT
         super().__init__(driver, **kwargs)
-
-
-    # def ready(self, diag=False):
-    #     if not super().ready(diag):
-    #         return False
-    #     elt = self.find_element(*locators_c.main_logged_in.LOGOUT)
-    #     if not elt or not elt.is_displayed():
-    #         return False
-    #     return True
-
+    
     def compose(self):
+        ''' compose link '''
         self.find_element(*locators_c.main_logged_in.COMPOSE).click()
         return compose_page_c(self.driver)
-
+    
     def logout(self):
+        ''' logout service '''
         logout=self.find_element(*locators_c.main_logged_in.LOGOUT)
         logout.click()
         return login_page_c(self.driver)
 
 
 class compose_page_c(page_base_c):
+    ''' e-mail compose page '''
     _url = '/compose/'
 
     def __init__(self, driver, **kwargs) -> None:
@@ -157,6 +164,7 @@ class compose_page_c(page_base_c):
         self.find_element(*locators_c.compose.SUBMIT).click()
 
     def send_mail(self, recipient, body, subject=None):
+        ''' send email service '''
         self.enter_recipient(recipient)
         self.enter_body(body)
         if subject:
@@ -166,6 +174,7 @@ class compose_page_c(page_base_c):
 
 
 class mail_sent_c(page_base_c):
+    ''' sent e-mail page '''
     _url = '/sendmsgok'
 
     def __init__(self, driver, **kwargs) -> None:
@@ -177,6 +186,7 @@ class mail_sent_c(page_base_c):
 
 
 class main_page_login_error_c(page_base_c):
+    ''' login page with error message, we arrive here after an invalid logging in '''
     _url = '/'
 
     def __init__(self, driver, base_url='https://mail.ru/', **kwargs) -> None:
